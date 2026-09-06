@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Roube o Ovo Simulator V2</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101827;font-family:Arial,sans-serif;touch-action:none}
+canvas{display:block;width:100vw;height:100vh}
+.panel{position:fixed;background:#101828dd;color:#fff;border:2px solid #ffffff22;border-radius:16px;padding:12px;box-shadow:0 8px 30px #0006}
+#hud{top:10px;left:10px;font-weight:bold;line-height:1.55}
+#hud b{font-size:19px}#level{color:#ffd54a}
+#msg{top:10px;left:50%;transform:translateX(-50%);max-width:70%;text-align:center;font-weight:bold}
+#shop{right:10px;top:10px;width:210px;display:none}
+#shop h3{margin:0 0 8px}#shop button{width:100%;margin:4px 0;padding:10px;border:0;border-radius:10px;background:#ffd54a;font-weight:bold}
+#close{background:#ddd!important}
+#menu{position:fixed;inset:0;background:#0c1424ee;display:flex;align-items:center;justify-content:center;color:white;text-align:center}
+.card{width:min(90%,420px);padding:28px;border-radius:24px;background:#18263bdd;border:2px solid #ffffff22}
+.card h1{font-size:34px;margin:0 0 8px}.card p{color:#ccd5e5}.mainbtn{border:0;border-radius:14px;padding:14px 25px;font-size:18px;font-weight:bold;background:#ffd54a}
+#controls{position:fixed;bottom:18px;left:18px;right:18px;display:flex;justify-content:space-between;align-items:end;pointer-events:none}
+.pad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(2,54px);gap:5px;pointer-events:auto}
+button.ctrl{border:0;border-radius:14px;background:#ffffffbb;font-size:24px;font-weight:bold}.up{grid-column:2}.left{grid-column:1}.down{grid-column:2}.right{grid-column:3}
+#action{width:125px;height:68px;border:0;border-radius:18px;background:#ffd54a;font-weight:bold;font-size:16px;pointer-events:auto}
+#shopBtn{position:fixed;right:10px;bottom:105px;border:0;border-radius:14px;padding:12px;background:#ffd54a;font-weight:bold}
+#help{position:fixed;bottom:5px;left:50%;transform:translateX(-50%);color:#fff9;font-size:11px}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud" class="panel">💰 <b id="coins">0</b><br>🥚 Ovos: <b id="held">0</b>/5<br>⭐ Nível: <b id="level">1</b><br>⚡ Velocidade: <span id="speed">3.5</span></div>
+<div id="msg" class="panel">Colete ovos e leve para sua base!</div>
+<div id="shop" class="panel">
+<h3>🛒 LOJA</h3>
+<button id="speedBuy">⚡ Velocidade +0,5 — 50💰</button>
+<button id="bagBuy">🎒 Mochila +1 — 80💰</button>
+<button id="eggBuy">🥚 Ovo raro — 120💰</button>
+<button id="close">Fechar</button>
+</div>
+<button id="shopBtn">🛒 LOJA</button>
+<div id="controls">
+<div class="pad">
+<button class="ctrl up">▲</button><button class="ctrl left">◀</button><button class="ctrl down">▼</button><button class="ctrl right">▶</button>
+</div>
+<button id="action">🥚 PEGAR / VENDER</button>
+</div>
+<div id="help">Chegue perto dos ovos para pegá-los. Volte à base para vender.</div>
+<div id="menu"><div class="card">
+<h1>🥚 Roube o Ovo</h1><h2>SIMULATOR V2</h2>
+<p>Seu objetivo: coletar ovos, ganhar moedas, comprar melhorias e evoluir!</p>
+<button class="mainbtn" id="play">JOGAR</button>
+</div></div>
+
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+let W,H;function resize(){W=innerWidth;H=innerHeight;c.width=W*devicePixelRatio;c.height=H*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}addEventListener('resize',resize);resize();
+
+let save=JSON.parse(localStorage.getItem('roubeOvoV2')||'null')||{coins:0,held:0,level:1,speed:3.5,capacity:5};
+let coins=save.coins,held=save.held,level=save.level,speed=save.speed,capacity=save.capacity;
+const player={x:100,y:150,r:18};const base={x:35,y:95,w:180,h:135};let eggs=[],keys={};
+function saveGame(){localStorage.setItem('roubeOvoV2',JSON.stringify({coins,held,level,speed,capacity}))}
+function updateHud(){coinsEl.textContent=coins;heldEl.textContent=held;levelEl.textContent=level;speedEl.textContent=speed.toFixed(1);saveGame()}
+const coinsEl=document.getElementById('coins'),heldEl=document.getElementById('held'),levelEl=document.getElementById('level'),speedEl=document.getElementById('speed');
+
+function spawnEgg(){
+ let tries=0,x,y;do{x=230+Math.random()*Math.max(100,W-280);y=125+Math.random()*Math.max(80,H-220);tries++}while(tries<20&&Math.hypot(x-(base.x+base.w/2),y-(base.y+base.h/2))<170);
+ eggs.push({x,y,r:13,rare:Math.random()<.12,value:Math.random()<.12?50:10});
+}
+for(let i=0;i<10;i++)spawnEgg();
+
+function say(t){const m=document.getElementById('msg');m.textContent=t;clearTimeout(window.tm);window.tm=setTimeout(()=>m.textContent='Colete ovos e leve para sua base!',2200)}
+function nearEgg(){let best=-1,d=999;eggs.forEach((e,i)=>{let q=Math.hypot(e.x-player.x,e.y-player.y);if(q<42&&q<d){d=q;best=i}});return best}
+function inBase(){return player.x>base.x&&player.x<base.x+base.w&&player.y>base.y&&player.y<base.y+base.h}
+function action(){
+ let i=nearEgg();
+ if(i>=0&&held<capacity){let e=eggs.splice(i,1)[0];held++;say((e.rare?'✨ OVO RARO! ':'🥚 Ovo coletado! ')+(e.value>10?'Vale 50 moedas!':'Leve para sua base.'));spawnEgg();updateHud();return}
+ if(inBase()&&held>0){let ganho=held*10;coins+=ganho;held=0;level=1+Math.floor(coins/250);say('💰 Você ganhou '+ganho+' moedas!');updateHud();return}
+ if(i<0&&held>=capacity)say('🎒 Mochila cheia! Volte para a base.');
+ else if(i<0)say('Aproxime-se de um ovo.');
+}
+function move(){let dx=(keys.right?1:0)-(keys.left?1:0),dy=(keys.down?1:0)-(keys.up?1:0);if(dx||dy){let l=Math.hypot(dx,dy);player.x+=dx/l*speed;player.y+=dy/l*speed}player.x=Math.max(18,Math.min(W-18,player.x));player.y=Math.max(75,Math.min(H-30,player.y))}
+function bind(el,k){el.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true});['pointerup','pointercancel','pointerleave'].forEach(x=>el.addEventListener(x,()=>keys[k]=false))}
+bind(document.querySelector('.up'),'up');bind(document.querySelector('.down'),'down');bind(document.querySelector('.left'),'left');bind(document.querySelector('.right'),'right');
+document.getElementById('action').addEventListener('pointerdown',e=>{e.preventDefault();action()});
+document.getElementById('shopBtn').onclick=()=>document.getElementById('shop').style.display='block';
+document.getElementById('close').onclick=()=>document.getElementById('shop').style.display='none';
+document.getElementById('speedBuy').onclick=()=>{if(coins>=50){coins-=50;speed+=.5;say('⚡ Velocidade melhorada!');updateHud()}else say('Você precisa de 50 moedas.')};
+document.getElementById('bagBuy').onclick=()=>{if(coins>=80){coins-=80;capacity++;say('🎒 Mochila aumentada!');updateHud()}else say('Você precisa de 80 moedas.')};
+document.getElementById('eggBuy').onclick=()=>{if(coins>=120){coins-=120;eggs.push({x:W/2,y:H/2,r:15,rare:true,value:100});say('✨ Um ovo super raro apareceu!');updateHud()}else say('Você precisa de 120 moedas.')};
+document.getElementById('play').onclick=()=>document.getElementById('menu').style.display='none';
+addEventListener('keydown',e=>{if(e.key==='ArrowUp')keys.up=true;if(e.key==='ArrowDown')keys.down=true;if(e.key==='ArrowLeft')keys.left=true;if(e.key==='ArrowRight')keys.right=true;if(e.key===' ')action()});
+addEventListener('keyup',e=>{if(e.key.startsWith('Arrow'))keys.up=keys.down=keys.left=keys.right=false});
+
+function draw(){
+ move();ctx.clearRect(0,0,W,H);
+ ctx.fillStyle='#68b568';ctx.fillRect(0,0,W,H);
+ ctx.fillStyle='#caa66a';ctx.fillRect(0,245,W,72);ctx.fillRect(Math.max(0,W/2-36),75,72,H-75);
+ // decor
+ ctx.fillStyle='#4f914f';for(let x=210;x<W;x+=100){ctx.beginPath();ctx.arc(x,100,18,0,7);ctx.fill()}
+ // base
+ ctx.fillStyle='#4169d8';ctx.fillRect(base.x,base.y,base.w,base.h);ctx.strokeStyle='#a9c4ff';ctx.lineWidth=3;ctx.strokeRect(base.x,base.y,base.w,base.h);
+ ctx.fillStyle='white';ctx.font='bold 17px Arial';ctx.fillText('🏠 SUA BASE',base.x+28,base.y+38);ctx.font='13px Arial';ctx.fillText('VENDA SEUS OVOS',base.x+22,base.y+65);
+ // eggs
+ eggs.forEach(e=>{ctx.beginPath();ctx.fillStyle=e.rare?'#b56cff':'#ffe66d';ctx.ellipse(e.x,e.y,e.r,e.r*1.25,0,0,7);ctx.fill();ctx.strokeStyle='#5b4810';ctx.stroke();ctx.font='12px Arial';ctx.fillStyle='white';ctx.fillText(e.rare?'✨':'🥚',e.x-9,e.y+5)});
+ // player
+ ctx.beginPath();ctx.fillStyle='#ef4444';ctx.arc(player.x,player.y,player.r,0,7);ctx.fill();ctx.fillStyle='white';ctx.font='bold 11px Arial';ctx.textAlign='center';ctx.fillText('VOCÊ',player.x,player.y+4);ctx.textAlign='left';
+ requestAnimationFrame(draw)
+}
+updateHud();draw();
+</script>
+</body></html>
