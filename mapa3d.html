@@ -4,113 +4,199 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>Roube o Ovo 3D</title>
-<style>*{
+
+<style>
+html,body{
+  margin:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:#87ceeb;
+  touch-action:none;
   user-select:none;
   -webkit-user-select:none;
   -webkit-touch-callout:none;
-  -webkit-tap-highlight-color:transparent;
 }
-
+canvas{
+  width:100%;
+  height:100%;
+  display:block;
+}
+#info{
+  position:fixed;
+  top:10px;
+  left:10px;
+  z-index:5;
+  color:white;
+  background:#0009;
+  padding:10px;
+  border-radius:10px;
+  font-family:Arial;
+}
+#controles{
+  position:fixed;
+  bottom:15px;
+  left:15px;
+  z-index:5;
+}
 button{
+  font-size:24px;
+  margin:3px;
+  padding:9px 14px;
+  border:0;
+  border-radius:12px;
   touch-action:none;
   user-select:none;
   -webkit-user-select:none;
 }
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#87ceeb}
-canvas{display:block}
-#info{position:fixed;top:10px;left:10px;background:#0008;color:white;padding:10px;border-radius:10px;font-family:Arial}
-#controles{position:fixed;bottom:20px;left:20px}
-button{font-size:25px;margin:3px;padding:10px 15px;border:0;border-radius:10px}
+#cam{
+  position:fixed;
+  bottom:20px;
+  right:15px;
+  z-index:5;
+}
 </style>
 </head>
+
 <body>
 
-<div id="info">🥚 Roube o Ovo 3D<br>🟦 Você</div>
+<div id="info">🥚 ROUbe o Ovo 3D<br>
+🎥 <span id="modo">3ª pessoa</span></div>
 
-<canvas id="jogo"></canvas>
+<canvas id="tela"></canvas>
 
 <div id="controles">
-<button onpointerdown="tecla('w',1)" onpointerup="tecla('w',0)">⬆️</button><br>
-<button onpointerdown="tecla('a',1)" onpointerup="tecla('a',0)">⬅️</button>
-<button onpointerdown="tecla('s',1)" onpointerup="tecla('s',0)">⬇️</button>
-<button onpointerdown="tecla('d',1)" onpointerup="tecla('d',0)">➡️</button>
+<button id="up">⬆️</button><br>
+<button id="left">⬅️</button>
+<button id="down">⬇️</button>
+<button id="right">➡️</button>
+</div>
+
+<div id="cam">
+<button id="cameraBtn">🎥 1ª pessoa</button>
 </div>
 
 <script>
-const c=document.getElementById("jogo");
-const ctx=c.getContext("2d");
+const canvas=document.getElementById("tela");
+const gl=canvas.getContext("webgl");
 
-function tamanho(){
- c.width=innerWidth;
- c.height=innerHeight;
-}
-tamanho();
-addEventListener("resize",tamanho);
-
-let x=0,z=0;
-let keys={};
-
-addEventListener("keydown",e=>keys[e.key.toLowerCase()]=1);
-addEventListener("keyup",e=>keys[e.key.toLowerCase()]=0);
-
-function tecla(k,v){keys[k]=v}
-
-function desenhar(){
- x+=(keys.d?0.08:0)-(keys.a?0.08:0);
- z+=(keys.s?0.08:0)-(keys.w?0.08:0);
-
- ctx.clearRect(0,0,c.width,c.height);
-
- // céu
- ctx.fillStyle="#87ceeb";
- ctx.fillRect(0,0,c.width,c.height);
-
- // chão
- ctx.fillStyle="#55aa55";
- ctx.fillRect(0,c.height/2,c.width,c.height/2);
-
- // casas
- casa(150,300);
- casa(c.width-150,350);
-
- // árvores
- arvore(100,180);
- arvore(c.width-100,220);
-
- // ovo
- ctx.fillStyle="white";
- ctx.beginPath();
- ctx.ellipse(c.width/2+150-x*20,c.height/2-30+z*20,25,35,0,0,Math.PI*2);
- ctx.fill();
-
- // jogador
- ctx.fillStyle="#3366ff";
- ctx.fillRect(c.width/2-25,c.height/2-50,50,70);
-
- requestAnimationFrame(desenhar);
+if(!gl){
+  document.body.innerHTML="<h2>Seu navegador não conseguiu abrir o 3D 😢</h2>";
 }
 
-function casa(px,py){
- ctx.fillStyle="#cc8844";
- ctx.fillRect(px-45,py-60,90,60);
- ctx.fillStyle="#aa3333";
- ctx.beginPath();
- ctx.moveTo(px-60,py-60);
- ctx.lineTo(px,py-110);
- ctx.lineTo(px+60,py-60);
- ctx.fill();
+/* SHADERS */
+const vs=`
+attribute vec3 pos;
+attribute vec3 cor;
+uniform mat4 matriz;
+varying vec3 vCor;
+
+void main(){
+  gl_Position=matriz*vec4(pos,1.0);
+  vCor=cor;
+}
+`;
+
+const fs=`
+precision mediump float;
+varying vec3 vCor;
+
+void main(){
+  gl_FragColor=vec4(vCor,1.0);
+}
+`;
+
+function shader(tipo,codigo){
+  const s=gl.createShader(tipo);
+  gl.shaderSource(s,codigo);
+  gl.compileShader(s);
+  return s;
 }
 
-function arvore(px,py){
- ctx.fillStyle="#8b4513";
- ctx.fillRect(px-10,py,20,70);
- ctx.fillStyle="#228b22";
- ctx.beginPath();
- ctx.arc(px,py,45,0,Math.PI*2);
- ctx.fill();
+const programa=gl.createProgram();
+gl.attachShader(programa,shader(gl.VERTEX_SHADER,vs));
+gl.attachShader(programa,shader(gl.FRAGMENT_SHADER,fs));
+gl.linkProgram(programa);
+gl.useProgram(programa);
+
+const posLoc=gl.getAttribLocation(programa,"pos");
+const corLoc=gl.getAttribLocation(programa,"cor");
+const matrizLoc=gl.getUniformLocation(programa,"matriz");
+
+/* MATRIZES */
+function perspectiva(fov,aspect,near,far){
+  const f=1/Math.tan(fov/2);
+  return [
+    f/aspect,0,0,0,
+    0,f,0,0,
+    0,0,(far+near)/(near-far),-1,
+    0,0,(2*far*near)/(near-far),0
+  ];
 }
 
-desenhar();
-</script>
-</body>
-</html>
+function identidade(){
+  return [
+    1,0,0,0,
+    0,1,0,0,
+    0,0,1,0,
+    0,0,0,1
+  ];
+}
+
+function multiplicar(a,b){
+  let r=new Array(16);
+  for(let c=0;c<4;c++)
+    for(let l=0;l<4;l++)
+      r[c*4+l]=a[l]*b[c*4]+a[4+l]*b[c*4+1]+a[8+l]*b[c*4+2]+a[12+l]*b[c*4+3];
+  return r;
+}
+
+function translacao(x,y,z){
+  let m=identidade();
+  m[12]=x;
+  m[13]=y;
+  m[14]=z;
+  return m;
+}
+
+function rotacaoY(a){
+  const c=Math.cos(a),s=Math.sin(a);
+  return [
+    c,0,-s,0,
+    0,1,0,0,
+    s,0,c,0,
+    0,0,0,1
+  ];
+}
+
+function rotacaoX(a){
+  const c=Math.cos(a),s=Math.sin(a);
+  return [
+    1,0,0,0,
+    0,c,s,0,
+    0,-s,c,0,
+    0,0,0,1
+  ];
+}
+
+function escala(x,y,z){
+  return [
+    x,0,0,0,
+    0,y,0,0,
+    0,0,z,0,
+    0,0,0,1
+  ];
+}
+
+/* CUBO */
+const vertices=[
+ -1,-1,-1,  1,-1,-1,  1,1,-1,
+ -1,-1,-1,  1,1,-1, -1,1,-1,
+
+ -1,-1,1,  1,1,1,  1,-1,1,
+ -1,-1,1, -1,1,1,  1,1,1,
+
+ -1,1,-1,  1,1,-1,  1,1,1,
+ -1,1,-1,  1,1,1, -1,1,1,
+
+ -1,-1,-
